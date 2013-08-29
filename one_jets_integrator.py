@@ -58,10 +58,9 @@ def get_energy( state ):
 	#something is wrong with this energy function
 	q,p,mu = state_decomp( state )
 	K,dK,d2K,d3K,d4K,d5K = get_kernel_tensors(q)
-	dq = einsum( 'aj,ij->ai',p,K) + einsum( 'abj,bij',mu,dK )
-	xi = einsum( 'aj,bij->abi',p,dK) - einsum('agj,bgij->abi',mu,d2K)
 	term = einsum('ai,aj,ij',p,p,K)
-	term -= einsum('abi,abj,abij',mu , mu,d2K)
+	term = term + 2* einsum('abi,aj,bij',mu,p,dK)
+	term = term - einsum('abi,agj,bgij',mu,mu,d2K)
 	return 0.5*term 
 
 def get_state_velocity( state , t ):
