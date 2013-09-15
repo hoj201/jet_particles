@@ -3,7 +3,7 @@ from numpy.random import rand, randn
 from numpy.linalg import cond, solve
 from scipy.integrate import odeint
 N_PART = 5
-DIM = 2
+DIM = 1
 SIGMA = 1./sqrt(N_PART)
 
 def get_kernel_tensors( x ):
@@ -58,7 +58,6 @@ def state_reconstruction( q , p , mu ):
 	return state
 
 def get_energy( state ):
-	#something is wrong with this energy function
 	q,p,mu = state_decomp( state )
 	K,dK,d2K,d3K = get_kernel_tensors(q)
 	term = 1*einsum('ai,aj,ij',p,p,K)
@@ -74,13 +73,16 @@ def get_state_velocity( state , t ):
 	theta = einsum( 'aj,bgij->abgi',p,d2K) - einsum('adj,bgdij->abgi',mu,d3K)
 	dp = - einsum('bi,bai->ai',p,xi) - einsum( 'bgi,bgai->ai',mu,theta)
 	dmu = einsum('agi,bgi->abi',mu,xi) - einsum('gbi,gai->abi',mu,xi)
+	print 'shape of dp'
+	print dp.shape
 	out = state_reconstruction( dq, dp, dmu)
 	return out
 
 q = rand(DIM,N_PART)
 p = rand(DIM,N_PART)
-mu = 0.01*rand(DIM,DIM, N_PART)
-
+mu = 0.11*rand(DIM,DIM, N_PART)
+print 'shape of p is initially'
+print p.shape
 state = state_reconstruction( q , p , mu )
 
 t_end = 100
