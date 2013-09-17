@@ -9,8 +9,7 @@ N = 2
 def greens_functions(q0):
 	#produces the greens
 	delta_x = np.outer(q0 , np.ones(N) ) - np.outer( np.ones(N),q0)
-	sq_mag =  delta_x**2
-	
+	sq_mag =  delta_x**2	
 	G = np.exp( - sq_mag / 2 )
 	dG =  - delta_x * G
 	d2G = (sq_mag - 1)*G
@@ -47,6 +46,15 @@ def get_velocity(state):
 	dp1 = -p1*np.inner( dG , p0) + p1*np.inner( d2G , p1*q1)
 	return assemble_state(dq0,dp0,dq1,dp1)
 
+def velocity_field( state , x ):
+	q0,p0,q1,p1 = decompose_state( state )
+	store0 = 0.0
+	store1 = 0.0
+	for k in range(0,N):
+		store0 = store0 + p0[k]*np.exp( -(x - q0[k])**2/2 )
+		store1 = store1 -p1[k]*(x-q0[k])*np.exp( -(x - q0[k])**2/2 )
+	return store0 + store1
+
 def energy( state ):
 	q0,p0,q1,p1 = decompose_state( state )
 	G,dG,d2G,d3G = greens_functions( q0 )
@@ -60,13 +68,22 @@ p0 = 1.0*np.ones(N)
 q1 = 1.0*np.ones(N)
 p1 = 0.0*np.ones(N)
 '''
+
+
 q0 = np.array( [ -2.0 , 2.0] )
-p0 = np.array( [ 1.0 , -1.0] )
+p0 = np.array( [ 1.0 ,-1.0] )
 q1 = np.array( [ 1.0 , 1.0 ] )
 p1 = np.array( [ 0.0 , 0.0 ] )
 
+
+'''
+q0 = np.array( [0.0] )
+p0 = np.array( [1.0] )
+q1 = np.array( [1.0] )
+p1 = np.array( [0.0] )
+'''
 state = assemble_state( q0, p0, q1, p1)
-N_time_steps = 20
+N_time_steps = 100
 dt = 0.05
 state_hist = np.zeros( [ N_time_steps , 4*N ] )
 
@@ -83,22 +100,22 @@ print energy( state )
 fig = plt.figure()
 ax = fig.gca(projection='3d')
 cc = lambda arg: colorConverter.to_rgba(arg, alpha = 0.6)
-xs = np.linspace(-3.0,3.0,50)
+xs = np.linspace(-10.0,10.0,50)
 verts = []
 zs = np.linspace(0,dt*(N_time_steps-1),N_time_steps)
-for z in zs:
-	ys = np.exp( 0.1*xs )
-	ys[0] = 0.0
-	ys[-1] = 0.0
-	verts.append(list(zip(xs,ys)))
+for k in range(0,N_time_steps):
+	u = velocity_field( state_hist[k] , xs )
+	u[0] = 0.0
+	u[-1] = 0.0
+	verts.append(list(zip(xs,u)))
 
 poly = PolyCollection(verts, facecolors = [cc('w')])
 poly.set_alpha(0.3)
 ax.add_collection3d( poly , zs=zs , zdir = 'y')
-ax.set_xlabel('X')
-ax.set_xlim3d(-3,3)
+ax.set_xlabel('x')
+ax.set_xlim3d(-10,10)
 ax.set_ylabel('time')
-ax.set_ylim3d(0,1)
+ax.set_ylim3d(0,zs[-1])
 ax.set_zlabel('u')
 ax.set_zlim3d(0,1)
 plt.show()
