@@ -127,42 +127,60 @@ def derivatives_of_kernel( nodes , q ):
     #EXAMPLE OF INDEX CONVENTION 'ijabc' refers to the c^th derivative of the ab^th entry of K(q_i - q_j)
     return K, DK, D2K, D3K , D4K , D5K 
 
-def Hamiltonian( q , p , mu ):
+def Hamiltonian( q , p , mu_1 , mu_2 ):
     #return the Hamiltonian.  Serves as a safety to check our equations of motion are correct.
     K,DK,D2K,D3K,D4K,D5K = derivatives_of_kernel(q,q)
     term_00 = 0.5*np.einsum('ia,ijab,jb',p,K,p)
-    term_01 = - np.einsum('ia,ijabc,jbc',p,DK,mu)
-    term_11 = - 0.5*np.einsum('iac,ijabcd,jbd',mu,D2K,mu)
-    return term_00 + term_01 + term_11
+    term_01 = - np.einsum('ia,ijabc,jbc',p,DK,mu_1)
+    term_11 = - 0.5*np.einsum('iac,ijabcd,jbd',mu_1,D2K,mu_1)
+    term_02 = np.einsum('ia,jbcd,ijabcd',p,mu_2,D2K)
+    term_12 = np.einsum('iae,jbcd,ijabecd',mu_1,mu_2,D3K)
+    term_22 = -0.5*np.einsum('iaef,jbcd,ijabcdef',mu_2,mu_2,D4K)
+    return term_00 + term_01 + term_11 + term_02 + term_12 + term_22
     
 def ode_function( state , t ):
-    q , p , mu = state_to_weinstein_darboux( state )
+    q , p , mu_1 , mu_2 = state_to_weinstein_darboux( state )
     K,DK,D2K,D3K,D4K,D5K = derivatives_of_kernel( q , q )
-    dq = np.einsum('ijab,jb->ia',K,p) - np.einsum('ijabc,jbc->ia',DK,mu)
-    xi = np.einsum('ijacb,jc->iab',DK,p) - np.einsum('ijacbd,jcd->iab',D2K,mu)
-    chi = np.einsum('ijadbc,jd->iabc',D2K,p) - np.einsum('ijaebcd,jed->iabc',D3K,mu)
-    dp = - np.einsum('ib,jc,ijbca->ia',p,p,DK) \
-        + np.einsum('id,jbc,ijdbca->ia',p,mu,D2K) \
-        - np.einsum('jd,ibc,ijdbca->ia',p,mu,D2K) \
-        + np.einsum('icb,jed,ijceabd->ia',mu,mu,D3K)
-    dmu = np.einsum('iac,ibc->iab',mu,xi) - np.einsum('icb,ica->iab',mu,xi)
-    dstate = weinstein_darboux_to_state( dq , dp , dmu )
+    dq = np.einsum('ijab,jb->ia',K,p) - np.einsum('ijabc,jbc->ia',DK,mu_1) + np.einsum('jbcd,ijabcd->ia',mu_2,D2K)
+    T00 = -np.einsum('ic,jb,ijcba->ia',p,p,DK)
+    T01 = -np.einsum('id,jbc,ijdbac->ia',p,mu_1,D2K) + np.einsum('jd,ibc,ijdbac->ia',p,mu_1,D2K)
+    T02 = -np.einsum('ie,jbcd,ijebacd->ia',p,mu_2,D3K)-np.einsum('je,ibcd,ijebacd->ia',p,mu_2,D3K)
+    T12 = -np.einsum('ife,jbcd,ijfbacde->ia',mu_1,mu_2,D4K)+np.einsum('jfe,ibcd,ijfbacde->ia',mu_1,mu_2,D4K)
+    T11 = np.einsum('ied,jbc,ijebacd->ia',mu_1,mu_2,D3K)
+    T22 = np.einsum('izef,jbcd,ijzbafcde->ia',mu_2,mu_2,D5K)
+    #START EDITING FROM HERE ON
+    xi_1 = np.einsum('ijacb,jc->iab',DK,p) - np.einsum('ijacbd,jcd->iab',D2K,mu_1)
+    xi_2 = np.einsum('ijadbc,jd->iabc',D2K,p) - np.einsum('ijaebcd,jed->iabc',D3K,mu_1)
+    dp = T00 + T01 + T02 + T12 + T11 + T22
+    dmu_1 = np.einsum('iac,ibc->iab',mu_1,xi) - np.einsum('icb,ica->iab',mu_1,xi)
+    dmu_2 = np.zeros([N,DIM,DIM,DIM])
+    dstate = weinstein_darboux_to_state( dq , dp , dmu_1 , dmu_2 )
     return dstate
 
 def state_to_weinstein_darboux( state ):
-    q = np.reshape( state[0:(N*DIM)] , [N,DIM] )
-    p = np.reshape( state[(N*DIM):(2*N*DIM)] , [N,DIM] )
-    mu = np.reshape( state[(2*N*DIM):(2*N*DIM + N*DIM*DIM)] , [N,DIM,DIM] )
-    return q , p , mu
+    i = 0
+    q = np.reshape( state[i:(i+N*DIM)] , [N,DIM] )
+    i = i + N*DIM
+    p = np.reshape( state[i:(i+N*DIM)] , [N,DIM] )
+    i = i + N*DIM
+    mu_1 = np.reshape( state[i:(i + N*DIM*DIM)] , [N,DIM,DIM] )
+    i = i + N*DIM*DIM
+    mu_2 = np.reshape( state[i:(i + N*DIM*DIM*DIM)] ,[N,DIM,DIM,DIM] ) 
+    return q , p , mu_1 , mu_2
 
-def weinstein_darboux_to_state( q , p , mu ):
-    state = np.zeros( 2*N*DIM + N*DIM*DIM )
-    state[0:(N*DIM)] = np.reshape( q , N*DIM )
-    state[(N*DIM):(2*N*DIM)] = np.reshape( p , N*DIM )
-    state[(2*N*DIM):(2*N*DIM+N*DIM*DIM)] = np.reshape( mu , N*DIM*DIM)
+def weinstein_darboux_to_state( q , p , mu_1, mu_2 ):
+    state = np.zeros( 2*N*DIM + N*DIM*DIM + N*DIM*DIM*DIM )
+    i = 0
+    state[i:(N*DIM)] = np.reshape( q , N*DIM )
+    i = i + N*DIM 
+    state[i:(i + N*DIM)] = np.reshape( p , N*DIM )
+    i = i + N*DIM
+    state[i:(i+N*DIM*DIM)] = np.reshape( mu_1 , N*DIM*DIM)
+    i = i + N*DIM*DIM
+    state[i:(i+N*DIM*DIM*DIM)] = np.reshape( mu_2 , N*DIM*DIM*DIM ) 
     return state
 
-def display_velocity_field( q , p ,mu ):
+def display_velocity_field( q , p ,mu_1 , mu_2 ):
  W = 5*SIGMA
  res = 30
  N_nodes = res**DIM
@@ -171,7 +189,7 @@ def display_velocity_field( q , p ,mu ):
  nodes[:,0] = np.reshape( store , N_nodes )
  nodes[:,1] = np.reshape( store.T , N_nodes )
  K,DK,D2K,D3K = derivatives_of_kernel( nodes , q )
- vel_field = np.einsum('ijab,jb->ia',K,p) - np.einsum('ijabc,jbc->ia',DK,mu)
+ vel_field = np.einsum('ijab,jb->ia',K,p) - np.einsum('ijabc,jbc->ia',DK,mu_1) + np.einsum('ijabcd,jbcd->ia',D2K,mu_2)
  U = vel_field[:,0]
  V = vel_field[:,1]
 
@@ -190,7 +208,8 @@ def test_functions( trials ):
     h = 10e-7
     q = SIGMA*np.random.randn(N,DIM)
     p = SIGMA*np.random.randn(N,DIM)
-    mu = np.random.randn(N,DIM,DIM)
+    mu_1 = np.random.randn(N,DIM,DIM)
+    mu_2 = np.random.randn(N,DIM,DIM,DIM)
     G,DG,D2G,D3G,D4G,D5G = derivatives_of_Gaussians(q,q)
     q_a = np.copy(q)
     q_b = np.copy(q)
@@ -335,9 +354,9 @@ def test_functions( trials ):
 
 
 
-    s = weinstein_darboux_to_state( q , p , mu)
+    s = weinstein_darboux_to_state( q , p , mu_1 , mu_2 )
     ds = ode_function( s , 0 )
-    dq,dp_coded,dmu = state_to_weinstein_darboux( ds ) 
+    dq,dp_coded,dmu_1,dmu_2 = state_to_weinstein_darboux( ds ) 
 
     print 'a test of the ode:'
     print 'dp_coded =' + str(dp_coded)
@@ -347,7 +366,7 @@ def test_functions( trials ):
     for i in range(0,N):
         for a in range(0,DIM):
             Q[i,a] = q[i,a] + h
-            dp_estim[i,a] = - ( Hamiltonian(Q,p,mu) - Hamiltonian(q,p,mu) ) / h 
+            dp_estim[i,a] = - ( Hamiltonian(Q,p,mu_1,mu_2) - Hamiltonian(q,p,mu_1,mu_2) ) / h 
             Q[i,a] = Q[i,a] - h
     print 'dp_estim =' + str(dp_estim)
     print 'dp_error =' + str(dp_estim - dp_coded)
