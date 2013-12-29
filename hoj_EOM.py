@@ -1,6 +1,7 @@
 #from scipy.spatial.distance import pdist , squareform
 #import matplotlib.pyplot as plt
 import numpy as np
+from scipy.integrate import odeint
 
 DIM = 2
 N = 2
@@ -148,8 +149,12 @@ def ode_function( state , t ):
     T12 = -np.einsum('ife,jbcd,ijfbacde->ia',mu_1,mu_2,D4K)+np.einsum('jfe,ibcd,ijfbacde->ia',mu_1,mu_2,D4K)
     T11 = np.einsum('ied,jbc,ijebacd->ia',mu_1,mu_1,D3K)
     T22 = -np.einsum('izef,jbcd,ijzbafcde->ia',mu_2,mu_2,D5K)
-    xi_1 = np.einsum('ijacb,jc->iab',DK,p) - np.einsum('ijacbd,jcd->iab',D2K,mu_1) + np.einsum('jecd,ijaebcd->iab',mu_2,D3K)
-    xi_2 = np.einsum('ijadbc,jd->iabc',D2K,p) - np.einsum('ijaebcd,jed->iabc',D3K,mu_1) + np.einsum('jefd,ijeabcfd->iab',mu_2,D4K)
+    xi_1 = np.einsum('ijacb,jc->iab',DK,p) \
+        - np.einsum('ijadbc,jdc->iab',D2K,mu_1) \
+        + np.einsum('jecd,ijaebcd->iab',mu_2,D3K)
+    xi_2 = np.einsum('ijadbc,jd->iabc',D2K,p) \
+        - np.einsum('ijadebc,jde->iabc',D3K,mu_1) \
+        + np.einsum('jefd,ijeabcfd->iab',mu_2,D4K)
     dp = T00 + T01 + T02 + T12 + T11 + T22
     dmu_1 = np.einsum('iac,ibc->iab',mu_1,xi_1)\
         - np.einsum('icb,ica->iab',mu_1,xi_1)\
@@ -157,7 +162,7 @@ def ode_function( state , t ):
         - np.einsum('idbc,idac->iab',mu_2,xi_2)\
         - np.einsum('idcb,idca->iab',mu_2,xi_2)
     dmu_2 = np.einsum('iadc,ibd->iabc',mu_2,xi_1)\
-        + np.einsum('iacd,ibd->iabc',mu_2,xi_1)\
+        + np.einsum('iabd,icd->iabc',mu_2,xi_1)\
         - np.einsum('idbc,ida->iabc',mu_2,xi_1)
     dstate = weinstein_darboux_to_state( dq , dp , dmu_1 , dmu_2 )
     return dstate
@@ -389,4 +394,19 @@ def test_functions( trials ):
     print 'dp_error =' + str(dp_estim - dp_coded)
     return 1
 
-test_functions(1)
+#test_functions(1)
+q = SIGMA*np.random.randn(N,DIM)
+p = SIGMA*np.random.randn(N,DIM)
+mu_1 = 0.1*np.random.randn(N,DIM,DIM)
+mu_2 = 0.01*np.random.randn(N,DIM,DIM,DIM)
+s = weinstein_darboux_to_state( q , p , mu_1 , mu_2 )
+N_t = 200
+t_span = np.linspace(0. ,1. , N_t )
+state = odeint( ode_function , s , t_span )
+q = np.zeros([N_t,N,DIM])
+p = np.zeros([N_t,N,DIM])
+mu_1 = np.zeros([N_t,N,DIM,DIM])
+mu_2 = np.zeros([N_t,N,DIM,DIM,DIM])
+for i in range(0,N_t):
+    q[i],p[i],mu_1[i],mu_2[i] = state_to_weinstein_darboux( state[i] )
+    print 'H['+str(i)+'] = '+str(Hamiltonian(q[i],p[i],mu_1[i],mu_2[i]))
