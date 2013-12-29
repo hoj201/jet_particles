@@ -128,7 +128,7 @@ def derivatives_of_kernel( nodes , q ):
     return K, DK, D2K, D3K , D4K , D5K 
 
 def Hamiltonian( q , p , mu_1 , mu_2 ):
-    #return the Hamiltonian.  Serves as a safety to check our equations of motion are correct.
+    #returns the Hamiltonian.  Serves as a safety to check our equations of motion are correct.
     K,DK,D2K,D3K,D4K,D5K = derivatives_of_kernel(q,q)
     term_00 = 0.5*np.einsum('ia,ijab,jb',p,K,p)
     term_01 = - np.einsum('ia,ijabc,jbc',p,DK,mu_1)
@@ -144,11 +144,10 @@ def ode_function( state , t ):
     dq = np.einsum('ijab,jb->ia',K,p) - np.einsum('ijabc,jbc->ia',DK,mu_1) + np.einsum('jbcd,ijabcd->ia',mu_2,D2K)
     T00 = -np.einsum('ic,jb,ijcba->ia',p,p,DK)
     T01 = np.einsum('id,jbc,ijdbac->ia',p,mu_1,D2K) - np.einsum('jd,ibc,ijdbac->ia',p,mu_1,D2K)
-    #THERE IS AN ERROR IN ONE OF THE NEXT FOUR LINES
     T02 = -np.einsum('ie,jbcd,ijebacd->ia',p,mu_2,D3K)-np.einsum('je,ibcd,ijebacd->ia',p,mu_2,D3K)
     T12 = -np.einsum('ife,jbcd,ijfbacde->ia',mu_1,mu_2,D4K)+np.einsum('jfe,ibcd,ijfbacde->ia',mu_1,mu_2,D4K)
     T11 = np.einsum('ied,jbc,ijebacd->ia',mu_1,mu_1,D3K)
-    T22 = np.einsum('izef,jbcd,ijzbafcde->ia',mu_2,mu_2,D5K)
+    T22 = -np.einsum('izef,jbcd,ijzbafcde->ia',mu_2,mu_2,D5K)
     xi_1 = np.einsum('ijacb,jc->iab',DK,p) - np.einsum('ijacbd,jcd->iab',D2K,mu_1) + np.einsum('jecd,ijaebcd->iab',mu_2,D3K)
     xi_2 = np.einsum('ijadbc,jd->iabc',D2K,p) - np.einsum('ijaebcd,jed->iabc',D3K,mu_1) + np.einsum('jefd,ijeabcfd->iab',mu_2,D4K)
     dp = T00 + T01 + T02 + T12 + T11 + T22
