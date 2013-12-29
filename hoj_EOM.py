@@ -132,10 +132,10 @@ def Hamiltonian( q , p , mu_1 , mu_2 ):
     K,DK,D2K,D3K,D4K,D5K = derivatives_of_kernel(q,q)
     term_00 = 0.5*np.einsum('ia,ijab,jb',p,K,p)
     term_01 = - np.einsum('ia,ijabc,jbc',p,DK,mu_1)
-    term_11 = - 0.5*np.einsum('iac,ijabcd,jbd',mu_1,D2K,mu_1)
+    term_11 = -0.5*np.einsum('iad,ijabcd,jbc',mu_1,D2K,mu_1)
     term_02 = np.einsum('ia,jbcd,ijabcd',p,mu_2,D2K)
     term_12 = np.einsum('iae,jbcd,ijabecd',mu_1,mu_2,D3K)
-    term_22 = -0.5*np.einsum('iaef,jbcd,ijabcdef',mu_2,mu_2,D4K)
+    term_22 = 0.5*np.einsum('iaef,jbcd,ijabcdef',mu_2,mu_2,D4K)
     return term_00 + term_01 + term_11 + term_02 + term_12 + term_22
     
 def ode_function( state , t ):
@@ -143,17 +143,23 @@ def ode_function( state , t ):
     K,DK,D2K,D3K,D4K,D5K = derivatives_of_kernel( q , q )
     dq = np.einsum('ijab,jb->ia',K,p) - np.einsum('ijabc,jbc->ia',DK,mu_1) + np.einsum('jbcd,ijabcd->ia',mu_2,D2K)
     T00 = -np.einsum('ic,jb,ijcba->ia',p,p,DK)
-    T01 = -np.einsum('id,jbc,ijdbac->ia',p,mu_1,D2K) + np.einsum('jd,ibc,ijdbac->ia',p,mu_1,D2K)
+    T01 = np.einsum('id,jbc,ijdbac->ia',p,mu_1,D2K) - np.einsum('jd,ibc,ijdbac->ia',p,mu_1,D2K)
+    #THERE IS AN ERROR IN ONE OF THE NEXT FOUR LINES
     T02 = -np.einsum('ie,jbcd,ijebacd->ia',p,mu_2,D3K)-np.einsum('je,ibcd,ijebacd->ia',p,mu_2,D3K)
     T12 = -np.einsum('ife,jbcd,ijfbacde->ia',mu_1,mu_2,D4K)+np.einsum('jfe,ibcd,ijfbacde->ia',mu_1,mu_2,D4K)
-    T11 = np.einsum('ied,jbc,ijebacd->ia',mu_1,mu_2,D3K)
+    T11 = np.einsum('ied,jbc,ijebacd->ia',mu_1,mu_1,D3K)
     T22 = np.einsum('izef,jbcd,ijzbafcde->ia',mu_2,mu_2,D5K)
-    #START EDITING FROM HERE ON
-    xi_1 = np.einsum('ijacb,jc->iab',DK,p) - np.einsum('ijacbd,jcd->iab',D2K,mu_1)
-    xi_2 = np.einsum('ijadbc,jd->iabc',D2K,p) - np.einsum('ijaebcd,jed->iabc',D3K,mu_1)
+    xi_1 = np.einsum('ijacb,jc->iab',DK,p) - np.einsum('ijacbd,jcd->iab',D2K,mu_1) + np.einsum('jecd,ijaebcd->iab',mu_2,D3K)
+    xi_2 = np.einsum('ijadbc,jd->iabc',D2K,p) - np.einsum('ijaebcd,jed->iabc',D3K,mu_1) + np.einsum('jefd,ijeabcfd->iab',mu_2,D4K)
     dp = T00 + T01 + T02 + T12 + T11 + T22
-    dmu_1 = np.einsum('iac,ibc->iab',mu_1,xi) - np.einsum('icb,ica->iab',mu_1,xi)
-    dmu_2 = np.zeros([N,DIM,DIM,DIM])
+    dmu_1 = np.einsum('iac,ibc->iab',mu_1,xi_1)\
+        - np.einsum('icb,ica->iab',mu_1,xi_1)\
+        + np.einsum('iadc,ibdc->iab',mu_2,xi_2)\
+        - np.einsum('idbc,idac->iab',mu_2,xi_2)\
+        - np.einsum('idcb,idca->iab',mu_2,xi_2)
+    dmu_2 = np.einsum('iadc,ibd->iabc',mu_2,xi_1)\
+        + np.einsum('iacd,ibd->iabc',mu_2,xi_1)\
+        - np.einsum('idbc,ida->iabc',mu_2,xi_1)
     dstate = weinstein_darboux_to_state( dq , dp , dmu_1 , dmu_2 )
     return dstate
 
@@ -201,22 +207,14 @@ def display_velocity_field( q , p ,mu_1 , mu_2 ):
  plt.axis([- W, W,- W, W ])
  return plt.gcf()
 
-def test_functions( trials ):
-    #checks that each function does what it is supposed to
-    
-    #testing derivatives of Gaussians
-    h = 10e-7
-    q = SIGMA*np.random.randn(N,DIM)
-    p = SIGMA*np.random.randn(N,DIM)
-    mu_1 = np.random.randn(N,DIM,DIM)
-    mu_2 = np.random.randn(N,DIM,DIM,DIM)
+def test_Gaussians( q ):
+    h = 1e-7
     G,DG,D2G,D3G,D4G,D5G = derivatives_of_Gaussians(q,q)
     q_a = np.copy(q)
     q_b = np.copy(q)
     q_c = np.copy(q)
     q_d = np.copy(q)
     q_e = np.copy(q)
-
     for i in range(0,N):
         for a in range(0,DIM):
             error_max = 0.
@@ -264,8 +262,16 @@ def test_functions( trials ):
                     q_c[i,c] = q_c[i,c] - h
                 q_b[i,b] = q_b[i,b] - h
             q_a[i,a] = q_a[i,a] - h
-    
+    return 1
 
+def test_kernel_functions( q ):
+    h = 1e-7
+#    G,DG,D2G,D3G,D4G,D5G = derivatives_of_Gaussians(q,q)
+    q_a = np.copy(q)
+    q_b = np.copy(q)
+    q_c = np.copy(q)
+    q_d = np.copy(q)
+    q_e = np.copy(q)
     K,DK,D2K,D3K,D4K,D5K = derivatives_of_kernel(q,q)
     delta = np.identity(DIM)
     error_max = 0.
@@ -351,8 +357,21 @@ def test_functions( trials ):
                 error = np.linalg.norm( DK[i,j,:,:,a] + DK[j,i,:,:,a] )
                 error_max = np.maximum( error, error_max )
     print 'max for DK_ij + DK_ji = ' + str( error_max )
+    return 1
 
 
+def test_functions( trials ):
+    #checks that each function does what it is supposed to
+    h = 10e-7
+    q = SIGMA*np.random.randn(N,DIM)
+    p = SIGMA*np.random.randn(N,DIM)
+    mu_1 = np.random.randn(N,DIM,DIM)
+#    mu_1 = np.zeros([N,DIM,DIM])
+#    mu_2 = np.zeros([N,DIM,DIM,DIM])
+    mu_2 = np.random.randn(N,DIM,DIM,DIM)
+    
+#    test_Gaussians( q )
+#    test_kernel_functions( q )
 
     s = weinstein_darboux_to_state( q , p , mu_1 , mu_2 )
     ds = ode_function( s , 0 )
@@ -360,7 +379,6 @@ def test_functions( trials ):
 
     print 'a test of the ode:'
     print 'dp_coded =' + str(dp_coded)
-
     Q = np.copy(q)
     dp_estim = np.zeros([N,DIM])
     for i in range(0,N):
@@ -370,7 +388,6 @@ def test_functions( trials ):
             Q[i,a] = Q[i,a] - h
     print 'dp_estim =' + str(dp_estim)
     print 'dp_error =' + str(dp_estim - dp_coded)
-
-    return 'what do you think?'
+    return 1
 
 test_functions(1)
